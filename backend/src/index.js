@@ -5,16 +5,18 @@ import { corsMiddleware } from './middleware/corsMiddleware.js';
 import { errorHandler } from './middleware/errorHandler.js';
 import analyzeRouter from './routes/analyze.js';
 import diagnosisRouter from './routes/diagnosis.js';
+import momentsRouter from './routes/moments.js';
 
 const app = express();
 
 // 中间件
 app.use(corsMiddleware);
-app.use(express.json());
+app.use(express.json({ limit: '20mb' }));
 
 // 路由
 app.use('/api/analyze', analyzeRouter);
 app.use('/api/diagnosis', diagnosisRouter);
+app.use('/api/moments', momentsRouter);
 
 // 健康检查（Render / Railway 部署时会 ping 这个接口）
 app.get('/health', (req, res) => res.json({ status: 'ok' }));
