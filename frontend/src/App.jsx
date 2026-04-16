@@ -115,6 +115,11 @@ const PORTRAIT_VERSIONS = [
   { id: 8, title: '世界上最最最真诚的大好人', description: '你人设立得最完美。越完美的人，越值得怀疑。不对，我信你。（真的吗？）' },
 ];
 
+// ── 时间系统常量 ──────────────────────────────────────────
+const DAY_NAMES = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+const PERIOD_NAMES_MAP = { morning: '上午', afternoon: '下午', evening: '晚上' };
+const PERIODS_ORDER = ['morning', 'afternoon', 'evening'];
+
 const TeaDiagnosisChat = () => {
   // ── 全局分数 ──────────────────────────────────────────────
   const [cumulativeScores, setCumulativeScores] = useState({ performance: 50, authenticity: 50 });
@@ -149,6 +154,11 @@ const TeaDiagnosisChat = () => {
   const [momentText, setMomentText] = useState('');
   const [momentImages, setMomentImages] = useState([]); // [{preview, base64, mediaType}]
   const [isPublishing, setIsPublishing] = useState(false);
+
+  // ── 时间系统状态 ──────────────────────────────────────────
+  const [currentDay, setCurrentDay] = useState(1);                    // 1-7
+  const [currentPeriod, setCurrentPeriod] = useState('morning');      // morning|afternoon|evening
+  const [periodChattedGfs, setPeriodChattedGfs] = useState(new Set()); // 本时段已聊天的 gf ID
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -312,6 +322,8 @@ const TeaDiagnosisChat = () => {
       },
     }));
     setUserInput('');
+    // 记录本时段与该女友有过对话（用于多开检测）
+    setPeriodChattedGfs(prev => new Set([...prev, activeGfId]));
 
     // ── 检查该女友是否被抓包 ──────────────────────────────
     const gf = GIRLFRIENDS.find(g => g.id === activeGfId);
@@ -334,9 +346,28 @@ const TeaDiagnosisChat = () => {
     }
   };
 
-  // ── 手动结束 ──────────────────────────────────────────────
+  // ── 手动结束（Phase 6 会替换为完整结局判断）────────────────
   const handleManualFinish = () => {
     triggerEnding(null, cumulativeScores.performance, cumulativeScores.authenticity, totalMessages);
+  };
+
+  // ── 时段推进 ──────────────────────────────────────────────
+  const handleAdvancePeriod = () => {
+    // Phase 3 会在此处插入多开判定逻辑（periodChattedGfs.size）
+    setPeriodChattedGfs(new Set());
+
+    if (currentPeriod === 'evening') {
+      if (currentDay >= 7) {
+        // 第 7 天晚上结束 → 触发结局（Phase 6 替换为完整评估）
+        triggerEnding(null, cumulativeScores.performance, cumulativeScores.authenticity, totalMessages);
+      } else {
+        setCurrentDay(prev => prev + 1);
+        setCurrentPeriod('morning');
+      }
+    } else {
+      const idx = PERIODS_ORDER.indexOf(currentPeriod);
+      setCurrentPeriod(PERIODS_ORDER[idx + 1]);
+    }
   };
 
   // ── 重置 ──────────────────────────────────────────────────
@@ -350,6 +381,9 @@ const TeaDiagnosisChat = () => {
     setActiveGfId(null);
     setCurrentTab('chat');
     setUserInput('');
+    setCurrentDay(1);
+    setCurrentPeriod('morning');
+    setPeriodChattedGfs(new Set());
     setGfStates(
       Object.fromEntries(GIRLFRIENDS.map(gf => [gf.id, {
         conversations: [{ type: 'girlfriend', text: gf.startMessages[Math.floor(Math.random() * gf.startMessages.length)], id: 0 }],
@@ -487,7 +521,7 @@ const TeaDiagnosisChat = () => {
           /* 列表页 header */
           <div className="header-title">
             <h2>假面舞会</h2>
-            <p>四张面具，一面真心</p>
+            <p className="time-label">{DAY_NAMES[currentDay - 1]} · {PERIOD_NAMES_MAP[currentPeriod]}</p>
           </div>
         )}
       </div>
@@ -551,7 +585,7 @@ const TeaDiagnosisChat = () => {
                 return (
                   <div
                     key={gf.id}
-                    className={`gf-list-item ${st.ended ? 'ended' : ''}`}
+                    className={`gf-list-item ${st.ended ? 'gf-ended' : ''}`}
                     onClick={() => !st.ended && setActiveGfId(gf.id)}
                   >
                     <img src={gf.avatar} alt={gf.name} className="gf-list-avatar" />
@@ -599,12 +633,24 @@ const TeaDiagnosisChat = () => {
                 );
               })()}
 
-              {/* 我说完了（6轮后出现） */}
-              {totalMessages >= 6 && (
-                <div style={{ padding: '4px 16px 12px', textAlign: 'center' }}>
-                  <button className="finish-btn" onClick={handleManualFinish}>我说完了</button>
-                </div>
-              )}
+              {/* 时段推进 */}
+              {(() => {
+                const isLast = currentDay === 7 && currentPeriod === 'evening';
+                const pidx = PERIODS_ORDER.indexOf(currentPeriod);
+                let label;
+                if (isLast) {
+                  label = '结束这一周';
+                } else if (currentPeriod === 'evening') {
+                  label = `继续 · ${DAY_NAMES[currentDay]} 上午`;
+                } else {
+                  label = `继续 · ${DAY_NAMES[currentDay - 1]} ${PERIOD_NAMES_MAP[PERIODS_ORDER[pidx + 1]]}`;
+                }
+                return (
+                  <div className="period-advance-bar">
+                    <button className="advance-btn" onClick={handleAdvancePeriod}>{label}</button>
+                  </div>
+                );
+              })()}
             </div>
           )}
 

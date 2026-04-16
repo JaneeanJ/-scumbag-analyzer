@@ -1292,3 +1292,38 @@ textarea:focus {
   border-radius: 3px;
   transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
+/* ── 时间标签 ── */
+.time-label {
+  font-size: 0.78em;
+  color: var(--accent-dusty-rose);
+  letter-spacing: 2px;
+  font-style: normal;
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* ── 时段推进栏 ── */
+.period-advance-bar {
+  padding: 8px 16px 16px;
+  text-align: center;
+}
+
+.advance-btn {
+  padding: 9px 28px;
+  background: transparent;
+  color: var(--text-light);
+  border: 0.5px solid rgba(168, 168, 157, 0.4);
+  border-radius: 20px;
+  cursor: pointer;
+  font-size: 0.82em;
+  font-family: 'Lora', serif;
+  letter-spacing: 0.8px;
+  transition: all 0.25s;
+}
+
+.advance-btn:hover {
+  background: rgba(201, 169, 160, 0.08);
+  border-color: var(--accent-dusty-rose);
+  color: var(--accent-dusty-rose);
+}
