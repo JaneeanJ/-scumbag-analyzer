@@ -13,6 +13,16 @@ dist-ssr
 *.local
 .env
 
+# Sensitive / local docs — do not commit
+4.16key.md
+*.key.md
+ROADMAP.md
+date-preview.html
+moments-preview.html
+multi-gf-preview.html
+双维诊断仪_改进图.md
+test/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
