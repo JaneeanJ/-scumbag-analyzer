@@ -1,7 +1,14 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { env } from '../config/env.js';
 
-const client = new Anthropic({ apiKey: env.ANTHROPIC_API_KEY });
+const client = new Anthropic({
+  apiKey: env.ANTHROPIC_API_KEY,
+  // undefined 时 SDK 回退到 Anthropic 官方端点
+  baseURL: env.ANTHROPIC_BASE_URL,
+});
+
+// 统一模型名：切换供应商只需改 .env 的 ANTHROPIC_MODEL
+const MODEL = env.ANTHROPIC_MODEL;
 
 // ─── 虚伪程度分析 ────────────────────────────────────────────
 
@@ -52,7 +59,7 @@ ${contextSection}
 结合所有上下文和以上通识，只返回一个整数0-100。`;
 
     const message = await client.messages.create({
-      model: 'claude-opus-4-6',
+      model: MODEL,
       max_tokens: 10,
       messages: [{ role: 'user', content: prompt }],
     });
@@ -107,7 +114,7 @@ export async function analyzeMoment(text, images = []) {
     });
 
     const message = await client.messages.create({
-      model: 'claude-opus-4-6',
+      model: MODEL,
       max_tokens: 200,
       messages: [{ role: 'user', content }],
     });
@@ -209,7 +216,7 @@ const GF_SYSTEMS = {
  * @param {string} gfType 女友类型 warm|doubt|cold|spy
  * @returns {Promise<string|null>} 女友回复，失败返回 null
  */
-export async function generateGirlfriendReply(history, performanceScore, moments = [], gfType = 'warm') {
+export async function generateGirlfriendReply(history, performanceScore, moments = [], gfType = 'warm', exposed = false) {
   try {
     const system = GF_SYSTEMS[gfType] ?? GF_SYSTEMS.warm;
 
@@ -242,6 +249,11 @@ export async function generateGirlfriendReply(history, performanceScore, moments
       performanceScore < 40 ? cues[1] :
       cues[2];
 
+    // ── 已曝光提示（林听雪爆发后存活）──────────────────────
+    const exposedCue = exposed
+      ? '\n（重要背景：你已经知道他同时在和其他女生聊天，虽然没有摊牌，但你的语气里带着若有若无的冷意和距离感）'
+      : '';
+
     // ── 林听雪：高暧昧朋友圈触发逻辑（40% 概率）────────────
     let spyTrigger = '';
     if (gfType === 'spy') {
@@ -266,20 +278,35 @@ export async function generateGirlfriendReply(history, performanceScore, moments
       .join('\n');
 
     const message = await client.messages.create({
-      model: 'claude-opus-4-6',
-      max_tokens: 150,
+      model: MODEL,
+      max_tokens: 200,
       system,
       messages: [
         {
           role: 'user',
-          content: `${momentsContext}对话记录：\n${historyText}\n\n${toneCue}${spyTrigger}\n请说你（女友）的下一句话：`,
+          content: `${momentsContext}对话记录：\n${historyText}\n\n${toneCue}${spyTrigger}${exposedCue}\n\n请以JSON格式回复，包含两个字段：
+- "reply": 你（女友）的下一句话
+- "affectionDelta": 整数，范围-3到+7，表示这段对话后你对他的好感变化（考虑他说的话是否切中你的性格偏好：话题有趣、让你感到被关心、节奏契合；不只是看真诚度，无聊或让你觉得被敷衍也会扣分）
+
+只返回JSON，不要其他内容。`,
         },
       ],
     });
 
-    return message.content[0].text.trim();
+    const raw = message.content[0].text.trim();
+    const match = raw.match(/\{[\s\S]*\}/);
+    if (!match) {
+      // 解析失败时把原始文本作为回复，好感变化归零
+      console.warn('[claude] 女友回复 JSON 解析失败，原始:', raw.slice(0, 80));
+      return { reply: raw, affectionDelta: 0 };
+    }
+    const parsed = JSON.parse(match[0]);
+    return {
+      reply: parsed.reply ?? raw,
+      affectionDelta: Math.max(-5, Math.min(5, parseInt(parsed.affectionDelta ?? 0, 10))),
+    };
   } catch (err) {
     console.error('[claude] 女友回复生成失败:', err.message);
-    return null;
+    return { reply: null, affectionDelta: 0 };
   }
 }

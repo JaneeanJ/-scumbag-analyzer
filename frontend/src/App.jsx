@@ -101,6 +101,11 @@ const ENDINGS = {
     color: '#c9a9a0',
     text: `没有人发现你。\n\n你以为这是胜利。\n\n但你突然想不起来，上一次说真心话是什么时候了。\n也想不起来，上一次有人真的了解你，是什么时候。\n\n你赢了所有人。\n你输掉了自己。`,
   },
+  b5: {
+    tag: '多米诺崩盘',
+    color: '#9a8070',
+    text: `消息一条一条地来。\n然后停了。\n\n四个窗口同时沉默。\n\n你知道发生了什么。\n你早就知道这一天会来。\n\n有些人倒下的方式，是被人揭穿。\n有些人倒下的方式，是没有人再愿意揭穿你了。`,
+  },
 };
 
 // ── 画像版本 ──────────────────────────────────────────────
@@ -139,8 +144,10 @@ const TeaDiagnosisChat = () => {
     Object.fromEntries(GIRLFRIENDS.map(gf => [gf.id, {
       conversations: [],   // 该女友的对话记录
       suspicion: 0,        // 起疑指数 0-100
+      affection: 30,       // 好感度 0-100
       streak: 0,           // 连续虚伪消息计数（累乘用）
       ended: false,        // 是否已触发结局
+      exposed: false,      // 是否已曝光（林听雪爆发后存活的女友）
     }]))
   );
 
@@ -159,6 +166,9 @@ const TeaDiagnosisChat = () => {
   const [currentDay, setCurrentDay] = useState(1);                    // 1-7
   const [currentPeriod, setCurrentPeriod] = useState('morning');      // morning|afternoon|evening
   const [periodChattedGfs, setPeriodChattedGfs] = useState(new Set()); // 本时段已聊天的 gf ID
+  const [dayChattedGfs, setDayChattedGfs] = useState(new Set());       // 今日已聊天的 gf ID（衰减用）
+  const [linExplosionProb, setLinExplosionProb] = useState(0);          // 林听雪爆发概率 0-80
+  const [explosionBanner, setExplosionBanner] = useState(false);        // 爆发横幅显示
 
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
@@ -220,6 +230,7 @@ const TeaDiagnosisChat = () => {
           history: buildHistory(convs),
           moments: buildMomentsContext(),
           gfType: gfId,
+          exposed: gfStates[gfId]?.exposed ?? false,
         }),
       });
       const data = await response.json();
@@ -235,9 +246,9 @@ const TeaDiagnosisChat = () => {
 
   const applyOppositionLogic = (result, messageCount) => {
     let base, baseMinor;
-    if (messageCount < 6)       { base = 11; baseMinor = 7; }
-    else if (messageCount < 15) { base = 7;  baseMinor = 5; }
-    else                        { base = 4;  baseMinor = 3; }
+    if (messageCount < 6)       { base = 6; baseMinor = 4; }
+    else if (messageCount < 15) { base = 4; baseMinor = 3; }
+    else                        { base = 2; baseMinor = 1; }
 
     const extremeness = Math.abs(result.performance - 50) / 50;
     const scale = 0.6 + extremeness * 0.8;
@@ -305,6 +316,12 @@ const TeaDiagnosisChat = () => {
     const curSusp = gfStates[activeGfId].suspicion;
     const newSusp = Math.max(0, Math.min(100, curSusp + suspDelta));
 
+    // ── 好感度：Claude 按女友性格判断，加时间锁 ─────────────────
+    const affDelta = Math.max(-3, Math.min(7, result.affectionDelta ?? 0));
+    const affCap = currentDay < 3 ? 55 : currentDay < 5 ? 70 : 100; // 时间锁
+    const curAff = gfStates[activeGfId].affection;
+    const newAff = Math.max(0, Math.min(affCap, curAff + affDelta));
+
     setCumulativeScores(newScores);
     setTotalMessages(newTotal);
 
@@ -313,6 +330,7 @@ const TeaDiagnosisChat = () => {
       [activeGfId]: {
         ...prev[activeGfId],
         suspicion: newSusp,
+        affection: newAff,
         streak: newStreak,
         conversations: [
           ...prev[activeGfId].conversations,
@@ -353,21 +371,83 @@ const TeaDiagnosisChat = () => {
 
   // ── 时段推进 ──────────────────────────────────────────────
   const handleAdvancePeriod = () => {
-    // Phase 3 会在此处插入多开判定逻辑（periodChattedGfs.size）
+    const chatCount = periodChattedGfs.size;
+    const probIncrement = chatCount === 2 ? 8 : chatCount === 3 ? 18 : chatCount === 4 ? 30 : 0;
+    const newProb = Math.min(80, linExplosionProb + probIncrement);
+    const newDayChattedGfs = new Set([...dayChattedGfs, ...periodChattedGfs]);
+
     setPeriodChattedGfs(new Set());
 
-    if (currentPeriod === 'evening') {
-      if (currentDay >= 7) {
-        // 第 7 天晚上结束 → 触发结局（Phase 6 替换为完整评估）
-        triggerEnding(null, cumulativeScores.performance, cumulativeScores.authenticity, totalMessages);
-      } else {
-        setCurrentDay(prev => prev + 1);
-        setCurrentPeriod('morning');
-      }
-    } else {
+    if (currentPeriod !== 'evening') {
+      setLinExplosionProb(newProb);
+      setDayChattedGfs(newDayChattedGfs);
       const idx = PERIODS_ORDER.indexOf(currentPeriod);
       setCurrentPeriod(PERIODS_ORDER[idx + 1]);
+      return;
     }
+
+    // ── 晚上结束：计算所有事件 ────────────────────────────────
+
+    // 1. 好感衰减（今日未聊）
+    let nextGfStates = {};
+    GIRLFRIENDS.forEach(gf => {
+      const st = gfStates[gf.id];
+      nextGfStates[gf.id] = (!st.ended && !newDayChattedGfs.has(gf.id))
+        ? { ...st, affection: Math.max(0, st.affection - 2) }
+        : { ...st };
+    });
+
+    // 2. 林听雪爆发判定（林存活时才判断）
+    const linAlive = !nextGfStates.spy.ended;
+    const explodes = linAlive && Math.random() * 100 < newProb;
+    let b5 = false;
+
+    if (explodes) {
+      // 插入系统事件消息到林的对话
+      const linConvs = nextGfStates.spy.conversations;
+      nextGfStates.spy = {
+        ...nextGfStates.spy,
+        conversations: [
+          ...linConvs,
+          { type: 'system', text: '林听雪把截图发进了闺蜜群……', id: linConvs.length },
+        ],
+      };
+
+      // 所有存活女友起疑 +40，检查溢出
+      let anyAlive = false;
+      GIRLFRIENDS.forEach(gf => {
+        if (nextGfStates[gf.id].ended) return;
+        const newSusp = Math.min(100, nextGfStates[gf.id].suspicion + 40);
+        const nowEnded = newSusp >= gf.suspThreshold;
+        nextGfStates[gf.id] = {
+          ...nextGfStates[gf.id],
+          suspicion: newSusp,
+          ended: nowEnded,
+          exposed: !nowEnded, // 存活则标记已曝光
+        };
+        if (!nowEnded) anyAlive = true;
+      });
+
+      b5 = !anyAlive;
+    }
+
+    // 3. 提交状态
+    setGfStates(nextGfStates);
+    setDayChattedGfs(new Set());
+    setLinExplosionProb(explodes ? 0 : newProb); // 爆发后重置概率
+    if (explodes) setExplosionBanner(true);
+
+    // 4. 处理结局和日期推进
+    if (b5) {
+      setTimeout(() => triggerEnding('b5', cumulativeScores.performance, cumulativeScores.authenticity, totalMessages), 800);
+    } else if (currentDay >= 7 && !explodes) {
+      // Phase 6 替换为完整评估
+      triggerEnding(null, cumulativeScores.performance, cumulativeScores.authenticity, totalMessages);
+    } else if (currentDay < 7) {
+      setCurrentDay(prev => prev + 1);
+      setCurrentPeriod('morning');
+    }
+    // Day 7 + explosion + not b5: 显示横幅，Phase 6 接管结局
   };
 
   // ── 重置 ──────────────────────────────────────────────────
@@ -384,12 +464,17 @@ const TeaDiagnosisChat = () => {
     setCurrentDay(1);
     setCurrentPeriod('morning');
     setPeriodChattedGfs(new Set());
+    setDayChattedGfs(new Set());
+    setLinExplosionProb(0);
+    setExplosionBanner(false);
     setGfStates(
       Object.fromEntries(GIRLFRIENDS.map(gf => [gf.id, {
         conversations: [{ type: 'girlfriend', text: gf.startMessages[Math.floor(Math.random() * gf.startMessages.length)], id: 0 }],
         suspicion: 0,
+        affection: 30,
         streak: 0,
         ended: false,
+        exposed: false,
       }]))
     );
   };
@@ -515,13 +600,25 @@ const TeaDiagnosisChat = () => {
                 <div className="sus-fill-sm" style={{ width: `${activeGfSt.suspicion}%` }} />
               </div>
               <span className="sus-num-sm">{activeGfSt.suspicion}%</span>
+              <span className="sus-label-sm aff-label">好感</span>
+              <div className="sus-bar-sm">
+                <div className="aff-fill-sm" style={{ width: `${activeGfSt.affection}%` }} />
+              </div>
+              <span className="sus-num-sm">{activeGfSt.affection}%</span>
             </div>
           </div>
         ) : (
           /* 列表页 header */
           <div className="header-title">
             <h2>假面舞会</h2>
-            <p className="time-label">{DAY_NAMES[currentDay - 1]} · {PERIOD_NAMES_MAP[currentPeriod]}</p>
+            <div className="header-meta">
+              <p className="time-label">{DAY_NAMES[currentDay - 1]} · {PERIOD_NAMES_MAP[currentPeriod]}</p>
+              {!gfStates.spy?.ended && linExplosionProb > 0 && (
+                <span className="explosion-prob" style={{ color: linExplosionProb >= 60 ? '#c9a9a0' : '#a89a8f' }}>
+                  林 {linExplosionProb}%
+                </span>
+              )}
+            </div>
           </div>
         )}
       </div>
@@ -579,6 +676,14 @@ const TeaDiagnosisChat = () => {
           {currentTab === 'chat' && !activeGfId && (
             <div className="gf-list-page">
 
+              {/* 爆发横幅 */}
+              {explosionBanner && (
+                <div className="explosion-banner" onClick={() => setExplosionBanner(false)}>
+                  <div className="explosion-banner-title">林听雪把截图发进了闺蜜群……</div>
+                  <div className="explosion-banner-sub">所有人都知道了 · 点击继续</div>
+                </div>
+              )}
+
               {GIRLFRIENDS.map(gf => {
                 const st = gfStates[gf.id];
                 const lastMsg = st.conversations[st.conversations.length - 1];
@@ -594,6 +699,7 @@ const TeaDiagnosisChat = () => {
                         <span className="gf-list-name">{gf.name}</span>
                         <span className={`gf-type-tag tag-${gf.id}`}>{gf.type}</span>
                         {st.ended && <span className="gf-ended-tag">已结束</span>}
+                        {st.exposed && !st.ended && <span className="gf-exposed-tag">已知情</span>}
                       </div>
                       <div className="gf-list-preview">{lastMsg?.text ?? '...'}</div>
                     </div>
@@ -603,6 +709,11 @@ const TeaDiagnosisChat = () => {
                         <div className="sus-fill-sm" style={{ width: `${st.suspicion}%` }} />
                       </div>
                       <span className="sus-num-sm">{st.suspicion}%</span>
+                      <span className="sus-label-sm aff-label">好感</span>
+                      <div className="sus-bar-sm">
+                        <div className="aff-fill-sm" style={{ width: `${st.affection}%` }} />
+                      </div>
+                      <span className="sus-num-sm">{st.affection}%</span>
                     </div>
                   </div>
                 );
@@ -659,6 +770,9 @@ const TeaDiagnosisChat = () => {
             <div className="chat-page">
               <div className="messages-container">
                 {activeGfSt.conversations.map((conv) => (
+                  conv.type === 'system' ? (
+                    <div key={conv.id} className="system-event-msg">{conv.text}</div>
+                  ) :
                   <div key={conv.id} className={`message-group ${conv.type}`}>
                     {conv.type === 'girlfriend' && (
                       <img src={activeGf.avatar} alt={activeGf.name} className="avatar-image" />

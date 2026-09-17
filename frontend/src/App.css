@@ -560,7 +560,9 @@ textarea:focus {
   flex: 1;
   overflow-y: auto;
   padding: 12px 0;
-  background: linear-gradient(180deg, rgba(250, 248, 246, 0.92) 0%, rgba(240, 235, 230, 0.92) 100%);
+  background: rgba(250, 248, 246, 0.92);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
 }
 
 .moments-empty {
@@ -1139,9 +1141,11 @@ textarea:focus {
 .global-score-card {
   margin: 14px 16px 0;
   padding: 14px 16px;
-  background: var(--bg-secondary);
+  background: rgba(250, 248, 246, 0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
   border-radius: 12px;
-  border: 1px solid rgba(168, 168, 157, 0.2);
+  border: 0.5px solid rgba(168, 168, 157, 0.2);
 }
 
 .global-score-title {
@@ -1305,14 +1309,17 @@ textarea:focus {
 
 /* ── 时段推进栏 ── */
 .period-advance-bar {
-  padding: 8px 16px 16px;
+  padding: 10px 16px 14px;
   text-align: center;
+  background: transparent;
 }
 
 .advance-btn {
   padding: 9px 28px;
-  background: transparent;
-  color: var(--text-light);
+  background: rgba(250, 248, 246, 0.85);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  color: var(--text-secondary);
   border: 0.5px solid rgba(168, 168, 157, 0.4);
   border-radius: 20px;
   cursor: pointer;
@@ -1323,7 +1330,83 @@ textarea:focus {
 }
 
 .advance-btn:hover {
-  background: rgba(201, 169, 160, 0.08);
   border-color: var(--accent-dusty-rose);
   color: var(--accent-dusty-rose);
+}
+
+/* ── Header meta 行 ── */
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.explosion-prob {
+  font-size: 0.72em;
+  letter-spacing: 1px;
+  font-weight: 500;
+  opacity: 0.85;
+}
+
+/* ── 爆发横幅 ── */
+.explosion-banner {
+  margin: 0 0 2px;
+  padding: 14px 18px;
+  background: rgba(154, 128, 112, 0.12);
+  border-left: 3px solid #c9a9a0;
+  cursor: pointer;
+  animation: slideIn 0.3s ease-out;
+  backdrop-filter: blur(4px);
+}
+
+.explosion-banner-title {
+  font-size: 13px;
+  color: #9a6050;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  margin-bottom: 3px;
+}
+
+.explosion-banner-sub {
+  font-size: 11px;
+  color: var(--text-light);
+  letter-spacing: 0.5px;
+}
+
+/* ── 系统事件消息 ── */
+.system-event-msg {
+  text-align: center;
+  font-size: 11px;
+  color: #9a6050;
+  background: rgba(154, 128, 112, 0.1);
+  border: 0.5px solid rgba(154, 128, 112, 0.25);
+  border-radius: 20px;
+  padding: 5px 14px;
+  margin: 4px auto;
+  max-width: 80%;
+  letter-spacing: 0.3px;
+  animation: fadeIn 0.4s ease-out;
+}
+
+/* ── 已曝光标签 ── */
+.gf-exposed-tag {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 8px;
+  background: rgba(154, 128, 112, 0.15);
+  color: #9a6050;
+  letter-spacing: 0.3px;
+}
+
+/* ── 好感度进度条 ── */
+.aff-fill-sm {
+  height: 100%;
+  background: linear-gradient(90deg, var(--morandi-green), rgba(138, 155, 122, 0.65));
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.aff-label {
+  margin-top: 4px;
+  color: var(--morandi-green) !important;
 }
